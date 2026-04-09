@@ -22,18 +22,15 @@ function saveDB(data) {
   fs.writeFileSync(DB_PATH, JSON.stringify(data, null, 2));
 }
 
-// GET todos os links monitorados
 app.get('/api/links', (req, res) => {
   const db = loadDB();
   res.json(db.links);
 });
 
-// POST adicionar novo link
 app.post('/api/links', (req, res) => {
   const { name, url } = req.body;
   if (!name || !url) return res.status(400).json({ error: 'Nome e URL são obrigatórios' });
-
-  const db = ();
+  const db = loadDB();
   const newLink = {
     id: uuidv4(),
     name,
@@ -44,21 +41,18 @@ app.post('/api/links', (req, res) => {
     status: 'idle',
     history: []
   };
-
   db.links.push(newLink);
   saveDB(db);
   res.json(newLink);
 });
 
-// DELETE remover link
 app.delete('/api/links/:id', (req, res) => {
-  const db = ();
+  const db = loadDB();
   db.links = db.links.filter(l => l.id !== req.params.id);
   saveDB(db);
   res.json({ ok: true });
 });
 
-// POST rodar teste manual
 app.post('/api/links/:id/test', async (req, res) => {
   const db = loadDB();
   const link = db.links.find(l => l.id === req.params.id);
@@ -66,12 +60,12 @@ app.post('/api/links/:id/test', async (req, res) => {
 
   link.status = 'running';
   saveDB(db);
-
   res.json({ ok: true, message: 'Teste iniciado' });
 
-  // Roda o teste em background
   try {
+    console.log(`Iniciando teste para: ${link.name}`);
     const result = await runTest(link.url, 100);
+    console.log(`Teste concluído:`, JSON.stringify(result));
     const db2 = loadDB();
     const l = db2.links.find(x => x.id === req.params.id);
     if (l) {
@@ -82,7 +76,7 @@ app.post('/api/links/:id/test', async (req, res) => {
       if (l.history.length > 10) l.history = l.history.slice(0, 10);
       saveDB(db2);
     }
-} catch (e) {
+  } catch (e) {
     console.error('ERRO AO RODAR TESTE:', e.message);
     console.error(e.stack);
     const db2 = loadDB();
@@ -91,7 +85,6 @@ app.post('/api/links/:id/test', async (req, res) => {
   }
 });
 
-// GET status de um link
 app.get('/api/links/:id', (req, res) => {
   const db = loadDB();
   const link = db.links.find(l => l.id === req.params.id);
@@ -99,7 +92,6 @@ app.get('/api/links/:id', (req, res) => {
   res.json(link);
 });
 
-// Verificação automática a cada 7 dias
 setInterval(async () => {
   const db = loadDB();
   const now = new Date();
@@ -128,7 +120,7 @@ setInterval(async () => {
       }
     }
   }
-}, 60 * 60 * 1000); // checa a cada hora
+}, 60 * 60 * 1000);
 
 const PORT = process.env.PORT || 3001;
 app.listen(PORT, () => console.log(`Backend rodando na porta ${PORT}`));
