@@ -10,6 +10,7 @@ app.use(cors());
 app.use(express.json());
 
 const DB_PATH = path.join(__dirname, 'db.json');
+const progressMap = {};
 
 function loadDB() {
   if (!fs.existsSync(DB_PATH)) {
@@ -53,6 +54,12 @@ app.delete('/api/links/:id', (req, res) => {
   res.json({ ok: true });
 });
 
+app.get('/api/links/:id/progress', (req, res) => {
+  const progress = progressMap[req.params.id];
+  if (!progress) return res.json({ running: false, done: 0, total: 100, results: [] });
+  res.json(progress);
+});
+
 app.post('/api/links/:id/test', async (req, res) => {
   const db = loadDB();
   const link = db.links.find(l => l.id === req.params.id);
@@ -60,12 +67,20 @@ app.post('/api/links/:id/test', async (req, res) => {
 
   link.status = 'running';
   saveDB(db);
+
+  progressMap[req.params.id] = { running: true, done: 0, total: 100, results: [] };
+
   res.json({ ok: true, message: 'Teste iniciado' });
+
+  const onProgress = (done, total, parcial) => {
+    progressMap[req.params.id] = { running: true, done, total, results: parcial };
+  };
 
   try {
     console.log(`Iniciando teste para: ${link.name}`);
-    const result = await runTest(link.url, 100);
+    const result = await runTest(link.url, 100, onProgress);
     console.log(`Teste concluído:`, JSON.stringify(result));
+    progressMap[req.params.id] = { running: false, done: 100, total: 100, results: result.results };
     const db2 = loadDB();
     const l = db2.links.find(x => x.id === req.params.id);
     if (l) {
@@ -78,7 +93,7 @@ app.post('/api/links/:id/test', async (req, res) => {
     }
   } catch (e) {
     console.error('ERRO AO RODAR TESTE:', e.message);
-    console.error(e.stack);
+    progressMap[req.params.id] = { running: false, done: 0, total: 100, results: [] };
     const db2 = loadDB();
     const l = db2.links.find(x => x.id === req.params.id);
     if (l) { l.status = 'error'; saveDB(db2); }
@@ -101,7 +116,7 @@ setInterval(async () => {
       link.status = 'running';
       saveDB(db);
       try {
-        const result = await runTest(link.url, 100);
+        const result = await runTest(link.url, 100, () => {});
         const db2 = loadDB();
         const l = db2.links.find(x => x.id === link.id);
         if (l) {
