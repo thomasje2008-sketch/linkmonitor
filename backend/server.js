@@ -33,7 +33,7 @@ app.post('/api/links', (req, res) => {
   const { name, url } = req.body;
   if (!name || !url) return res.status(400).json({ error: 'Nome e URL são obrigatórios' });
 
-  const db = loadDB();
+  const db = ();
   const newLink = {
     id: uuidv4(),
     name,
@@ -52,7 +52,7 @@ app.post('/api/links', (req, res) => {
 
 // DELETE remover link
 app.delete('/api/links/:id', (req, res) => {
-  const db = loadDB();
+  const db = ();
   db.links = db.links.filter(l => l.id !== req.params.id);
   saveDB(db);
   res.json({ ok: true });
@@ -82,7 +82,9 @@ app.post('/api/links/:id/test', async (req, res) => {
       if (l.history.length > 10) l.history = l.history.slice(0, 10);
       saveDB(db2);
     }
-  } catch (e) {
+} catch (e) {
+    console.error('ERRO AO RODAR TESTE:', e.message);
+    console.error(e.stack);
     const db2 = loadDB();
     const l = db2.links.find(x => x.id === req.params.id);
     if (l) { l.status = 'error'; saveDB(db2); }
