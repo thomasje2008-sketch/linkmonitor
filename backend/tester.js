@@ -47,7 +47,15 @@ async function testarUmaVez(urlInicial) {
   }
 }
 
-async function runTest(url, tentativas = 100) {
+function calcularParcial(contagem, tentativas) {
+  return Object.entries(contagem).map(([dest, count]) => ({
+    url: dest,
+    count,
+    percentage: parseFloat(((count / tentativas) * 100).toFixed(2))
+  })).sort((a, b) => b.percentage - a.percentage);
+}
+
+async function runTest(url, tentativas = 100, onProgress = () => {}) {
   const contagem = {};
   let erros = 0;
 
@@ -59,17 +67,17 @@ async function runTest(url, tentativas = 100) {
     } else {
       erros++;
     }
+
+    // Notifica progresso a cada tentativa
+    const parcial = calcularParcial(contagem, i + 1);
+    onProgress(i + 1, tentativas, parcial);
+
     if (i < tentativas - 1) {
       await delay(Math.floor(Math.random() * 1500) + 1000);
     }
   }
 
-  const results = Object.entries(contagem).map(([dest, count]) => ({
-    url: dest,
-    count,
-    percentage: parseFloat(((count / tentativas) * 100).toFixed(2))
-  })).sort((a, b) => b.percentage - a.percentage);
-
+  const results = calcularParcial(contagem, tentativas);
   return { results, total: tentativas, errors: erros };
 }
 
