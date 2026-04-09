@@ -12,6 +12,11 @@ app.use(express.json());
 const DB_PATH = path.join(__dirname, 'db.json');
 const progressMap = {};
 
+// Credenciais e tokens ficam APENAS no servidor
+const USUARIO = process.env.AUTH_EMAIL || 'squad7d.s7d@gmail.com';
+const SENHA = process.env.AUTH_SENHA || '$7D_senhacompartilhada';
+const tokens = new Set();
+
 function loadDB() {
   if (!fs.existsSync(DB_PATH)) {
     fs.writeFileSync(DB_PATH, JSON.stringify({ links: [] }, null, 2));
@@ -23,12 +28,41 @@ function saveDB(data) {
   fs.writeFileSync(DB_PATH, JSON.stringify(data, null, 2));
 }
 
-app.get('/api/links', (req, res) => {
+// Middleware de autenticação
+function auth(req, res, next) {
+  const token = req.headers['x-auth-token'];
+  if (!token || !tokens.has(token)) {
+    return res.status(401).json({ error: 'Não autorizado' });
+  }
+  next();
+}
+
+// POST login
+app.post('/api/login', (req, res) => {
+  const { email, senha } = req.body;
+  if (email === USUARIO && senha === SENHA) {
+    const token = uuidv4();
+    tokens.add(token);
+    return res.json({ ok: true, token });
+  }
+  return res.status(401).json({ error: 'Credenciais inválidas' });
+});
+
+// POST logout
+app.post('/api/logout', (req, res) => {
+  const token = req.headers['x-auth-token'];
+  if (token) tokens.delete(token);
+  res.json({ ok: true });
+});
+
+// GET todos os links monitorados
+app.get('/api/links', auth, (req, res) => {
   const db = loadDB();
   res.json(db.links);
 });
 
-app.post('/api/links', (req, res) => {
+// POST adicionar novo link
+app.post('/api/links', auth, (req, res) => {
   const { name, url } = req.body;
   if (!name || !url) return res.status(400).json({ error: 'Nome e URL são obrigatórios' });
   const db = loadDB();
@@ -47,20 +81,23 @@ app.post('/api/links', (req, res) => {
   res.json(newLink);
 });
 
-app.delete('/api/links/:id', (req, res) => {
+// DELETE remover link
+app.delete('/api/links/:id', auth, (req, res) => {
   const db = loadDB();
   db.links = db.links.filter(l => l.id !== req.params.id);
   saveDB(db);
   res.json({ ok: true });
 });
 
-app.get('/api/links/:id/progress', (req, res) => {
+// GET progresso do teste
+app.get('/api/links/:id/progress', auth, (req, res) => {
   const progress = progressMap[req.params.id];
   if (!progress) return res.json({ running: false, done: 0, total: 100, results: [] });
   res.json(progress);
 });
 
-app.post('/api/links/:id/test', async (req, res) => {
+// POST rodar teste manual
+app.post('/api/links/:id/test', auth, async (req, res) => {
   const db = loadDB();
   const link = db.links.find(l => l.id === req.params.id);
   if (!link) return res.status(404).json({ error: 'Link não encontrado' });
@@ -100,13 +137,15 @@ app.post('/api/links/:id/test', async (req, res) => {
   }
 });
 
-app.get('/api/links/:id', (req, res) => {
+// GET status de um link
+app.get('/api/links/:id', auth, (req, res) => {
   const db = loadDB();
   const link = db.links.find(l => l.id === req.params.id);
   if (!link) return res.status(404).json({ error: 'Link não encontrado' });
   res.json(link);
 });
 
+// Verificação automática a cada hora
 setInterval(async () => {
   const db = loadDB();
   const now = new Date();
