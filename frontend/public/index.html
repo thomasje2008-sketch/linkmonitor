@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>LinkMonitor — Dashboard</title>
   <link rel="preconnect" href="https://fonts.googleapis.com" />
-  <link href="https://fonts.googleapis.com/css2?family=Syne:wght@400;500;600;700;800&family=DM+Mono:wght@300;400;500&display=swap" rel="stylesheet" />
+  <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet" />
   <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.js"></script>
   <style>
     *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
@@ -33,8 +33,8 @@
       --text: #f0f0ff;
       --text2: #a0a0c0;
       --text3: #606080;
-      --mono: 'DM Mono', monospace;
-      --sans: 'Syne', sans-serif;
+      --mono: 'JetBrains Mono', monospace;
+      --sans: 'Plus Jakarta Sans', sans-serif;
       --r: 12px;
       --r2: 8px;
     }
@@ -183,28 +183,39 @@
     .btn-add:hover { background: var(--accent2); transform: translateY(-1px); }
 
     /* Main */
-.main {
-  margin-left: 260px;
-  min-height: 100vh;
-  padding: 20px 24px;
-}
+    .main {
+      margin-left: 260px;
+      min-height: 100vh;
+      padding: 24px 28px;
+      overflow-x: hidden;
+    }
 
     /* Header */
-.page-header {
-  display: flex;
-  align-items: flex-start;
-  justify-content: space-between;
-  margin-bottom: 24px;
-  flex-wrap: wrap;
-  gap: 12px;
-}
+    .page-header {
+      display: flex;
+      align-items: flex-start;
+      justify-content: space-between;
+      margin-bottom: 24px;
+      flex-wrap: wrap;
+      gap: 12px;
+      min-width: 0;
+      overflow: hidden;
+    }
+
+    .page-header > div:first-child {
+      min-width: 0;
+      flex: 1;
+      overflow: hidden;
     }
 
     .page-title {
-      font-size: 28px;
+      font-size: 24px;
       font-weight: 800;
-      letter-spacing: -1px;
+      letter-spacing: -0.5px;
       color: var(--text);
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
     }
 
     .page-sub {
@@ -793,7 +804,7 @@
           <span id="dash-status-badge"></span>
         </div>
         <div class="page-title" id="dash-name">—</div>
-        <div class="page-sub" id="dash-url">—</div>
+        <div class="page-sub" id="dash-url" style="overflow:hidden; text-overflow:ellipsis; white-space:nowrap; max-width:70%; cursor:pointer;" onclick="window.open(document.getElementById('dash-url').dataset.url, '_blank')" title="Clique para abrir o link">—</div>
       </div>
       <div style="display:flex; gap:8px; align-items:center;">
         <button class="btn btn-danger" onclick="deleteCurrentLink()">Remover</button>
@@ -806,7 +817,12 @@
 
     <div id="running-banner" class="running-banner" style="display:none;">
       <div class="spinner"></div>
-      Teste em andamento — isso pode levar alguns minutos com 100 tentativas...
+      <div style="flex:1;">
+        <div id="progress-text">Teste em andamento — isso pode levar alguns minutos com 100 tentativas...</div>
+        <div style="margin-top:8px; background:rgba(255,255,255,0.1); border-radius:999px; height:4px; overflow:hidden;">
+          <div id="progress-bar" style="height:100%; background:var(--amber); border-radius:999px; width:0%; transition:width 0.5s;"></div>
+        </div>
+      </div>
     </div>
 
     <div class="metrics" style="grid-template-columns: repeat(3, 1fr); margin-bottom: 24px;">
@@ -882,11 +898,45 @@
 </div>
 
 <script>
-const API = 'https://linkmonitor-production.up.railway.app/api';
+const API = 'http://localhost:3001/api';
 let links = [];
 let currentLinkId = null;
 let donutChart = null;
-let pollInterval = null;
+let progressPollInterval = null;
+
+async function fetchProgress(id) {
+  try {
+    const res = await fetch(`${API}/links/${id}/progress`);
+    const progress = await res.json();
+
+    const pct = progress.total > 0 ? Math.round((progress.done / progress.total) * 100) : 0;
+    const progressBar = document.getElementById('progress-bar');
+    const progressText = document.getElementById('progress-text');
+
+    if (progressBar) progressBar.style.width = pct + '%';
+    if (progressText) {
+      progressText.textContent = progress.running
+        ? `Testando... ${progress.done} de ${progress.total} tentativas (${pct}%)`
+        : `Teste concluído! ${progress.done} tentativas realizadas`;
+    }
+
+    // Atualiza gráfico em tempo real se tiver resultados parciais
+    if (progress.results && progress.results.length > 0) {
+      renderCharts(progress.results);
+      document.getElementById('dash-total').textContent = progress.done;
+    }
+
+    if (!progress.running) {
+      if (progressPollInterval) {
+        clearInterval(progressPollInterval);
+        progressPollInterval = null;
+      }
+      await fetchLinks();
+    }
+  } catch(e) {
+    console.error('Erro ao buscar progresso:', e);
+  }
+}
 
 const BAR_COLORS = [
   '#7c6ef5','#3dd68c','#f5a623','#63b3ed','#f687b3',
@@ -976,7 +1026,9 @@ function renderOverview() {
 
 function renderDashboard(link) {
   document.getElementById('dash-name').textContent = link.name;
-  document.getElementById('dash-url').textContent = link.url;
+  const dashUrl = document.getElementById('dash-url');
+  dashUrl.textContent = link.url;
+  dashUrl.dataset.url = link.url;
 
   const statusClass = link.status === 'running' ? 'status-running' : link.status === 'error' ? 'status-error' : 'status-idle';
   const statusText = link.status === 'running' ? '● Rodando' : link.status === 'error' ? '● Erro' : '● Ativo';
@@ -1151,6 +1203,10 @@ async function runCurrentTest() {
 
   await fetch(`${API}/links/${currentLinkId}/test`, { method: 'POST' });
   await fetchLinks();
+
+  // Inicia polling de progresso a cada 3 segundos
+  if (progressPollInterval) clearInterval(progressPollInterval);
+  progressPollInterval = setInterval(() => fetchProgress(currentLinkId), 3000);
 }
 
 async function deleteCurrentLink() {
