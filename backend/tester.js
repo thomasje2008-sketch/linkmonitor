@@ -29,6 +29,11 @@ async function testarUmaVez(urlInicial) {
       '--disable-setuid-sandbox',
       '--disable-dev-shm-usage',
       '--disable-blink-features=AutomationControlled',
+      '--disable-gpu',
+      '--single-process',
+      '--no-zygote',
+      '--disable-extensions',
+      '--disable-software-rasterizer',
     ]
   });
 
